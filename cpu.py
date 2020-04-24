@@ -16,12 +16,13 @@ CALL= 0b01010000
 RET = 0b00010001
 CMP = 0b10100111
 JMP = 0b01010100
+JEQ = 0b01010101
+JNE = 0b01010110
 
 # Masks
 INSTRUCTION_MASK = 0b11000000
 ALU_MASK = 0b00100000
 AUTOINCREMENT_MASK = 0b00010000
-LGE_MASK = 0b00000111
 
 # CMP codes
 L = 0b100
@@ -35,7 +36,7 @@ class CPU:
         """Construct a new CPU."""
         self.ram = [0] * 256
         self.reg = [0] * 8
-        self.fl = 0b0000000
+        self.fl = 0b00000000
 
         self.reg[SP] = 0xf4
 
@@ -50,6 +51,12 @@ class CPU:
             POP: self.POP,
             CALL: self.CALL,
             RET: self.RET,
+            MUL: self.MUL,
+            ADD: self.ADD,
+            CMP: self.CMP,
+            JMP: self.JMP,
+            JEQ: self.JEQ,
+            JNE: self.JNE
         }
 
     def LDI(self):
@@ -97,25 +104,43 @@ class CPU:
     
     def CMP(self, reg_a, reg_b):
         if self.reg[reg_a] < self.reg[reg_b]:
-            self.fl |= L
-        else:
-            self.fl &= 0b011
+            self.fl = 0b100
 
-        if self.reg[reg_a] < self.reg[reg_b]:
-            self.fl |= G
-        else:
-            self.fl &= 0b101
+        elif self.reg[reg_a] > self.reg[reg_b]:
+            self.fl = 0b010
 
-        if self.reg[reg_a] > self.reg[reg_b]:
-            self.fl |= E
+        elif self.reg[reg_a] == self.reg[reg_b]:
+            self.fl = 0b001
+
         else:
-            self.fl &= 0b110
+            self.fl = 0b000
+
     
     def CALL(self):
         # set the pc to the value stored in the register number
         register_number = self.ram_read(self.pc + 1)
         self.PUSH(call=True)
         self.pc = self.reg[register_number]
+    
+    def JMP(self):
+        register_number = self.ram_read(self.pc + 1)
+        self.pc = self.reg[register_number]
+    
+    def JEQ(self):
+        register_number = self.ram_read(self.pc + 1)
+
+        if (self.fl & 0b1) == 1:
+            self.pc = self.reg[register_number]
+        else:
+            self.pc += 2
+    
+    def JNE(self):
+        register_number = self.ram_read(self.pc + 1)
+
+        if (self.fl & 0b1) == 0:
+            self.pc = self.reg[register_number]
+        else:
+            self.pc += 2
 
     def RET(self):
         self.POP(ret=True)
@@ -146,7 +171,7 @@ class CPU:
         if op in self.branch_table:
             self.branch_table[op](reg_a, reg_b)
         else:
-            raise Exception("Unsupported ALU operation")
+            raise Exception(f"Unsupported ALU operation: ({bin(op)})")
 
     def trace(self):
         """
@@ -156,7 +181,7 @@ class CPU:
 
         print(f"TRACE: %02X | %02X %02X %02X |" % (
             self.pc,
-            #self.fl,
+            # self.fl,
             #self.ie,
             self.ram_read(self.pc),
             self.ram_read(self.pc + 1),
@@ -182,8 +207,8 @@ class CPU:
                 register_b = self.ram_read(self.pc + 2)
                 self.alu(ir, register_a, register_b)
 
-            elif ir in self.branc_table:
-                self.dispatcher[ir]()
+            elif ir in self.branch_table:
+                self.branch_table[ir]()
 
             else:
                 self.running = False
